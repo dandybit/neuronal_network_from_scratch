@@ -5,12 +5,12 @@ class Dataset:
         self.batch_size = batch_size
         self.drop_last = drop_last
         if data.shape[0] % batch_size == 0:
-            self.data = np.reshape(data, (-1, batch_size, data.shape[-1]))
-            self.labels = np.reshape(labels, (-1, batch_size, labels.shape[-1]))
+            self.data = np.reshape(data, (-1, batch_size, *data.shape[1:]))
+            self.labels = np.reshape(labels, (-1, batch_size, *labels.shape[1:]))
         else:
             drop_ele = data.shape[0] % batch_size
-            self.data = np.reshape(data[:-drop_ele], (-1, batch_size, data.shape[-1]))
-            self.labels = np.reshape(labels[:-drop_ele], (-1, batch_size, labels.shape[-1]))
+            self.data = np.reshape(data[:-drop_ele], (-1, batch_size, *data.shape[1:]))
+            self.labels = np.reshape(labels[:-drop_ele], (-1, batch_size, *labels.shape[1:]))
         self.batch_size = batch_size
 
     def get_dataset(self):

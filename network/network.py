@@ -11,17 +11,18 @@ import matplotlib.pyplot as plt
 
 class Network:
     def __init__(self, layers_init: list, optimizer=SGD(), loss_func=CategoricalCrossEntropy) -> None:
-        self.layers_init = layers_init
+        self.layers = layers_init
         self.loss_func = loss_func()
         self.optimizer = optimizer
-        self.input_layer = Layer(self.layers_init[0][0], Plain, 1)
-        self.layers = []
+        self.input_layer = self.layers[0]
+        self.input_layer.build_weights(1, init_layer=True)
 
         last_layer = self.input_layer
-        for layer in self.layers_init[1:]:
-            current_layer = Layer(layer[0], layer[1], last_layer.get_shape()[0])
-            self.layers.append(Layer(layer[0], layer[1], last_layer.get_shape()[0]))
-            last_layer = current_layer
+        for layer in self.layers[1:]:
+            layer.build_weights(last_layer.n_neurons)
+            last_layer = layer
+
+        self.layers = self.layers[1:]
 
     def train(self, inputs: Dataset, epochs=1) -> list:
 
@@ -72,12 +73,10 @@ class Network:
 
 
 class Layer:
-    def __init__(self, n_neurons: int, activation_func, n_neurons_last_layer: int) -> None:
+    def __init__(self, n_neurons: int, activation_func) -> None:
         self.n_neurons = n_neurons
         self.activation_func = activation_func()
         self.derivative_act_func = derivative(self.activation_func)
-        self.n_neurons_last_layer = n_neurons_last_layer
-        self.inner_weights = np.random.normal(0, 0.01, size=(self.n_neurons, self.n_neurons_last_layer))
         self.inner_bias = np.zeros(self.n_neurons)
         self.last_input = []
 
@@ -104,4 +103,50 @@ class Layer:
 
     def get_output_no_act(self) -> np.ndarray:
         return self.output_x
+
+
+class DenseLayer(Layer):
+    def __init__(self, n_neurons: int, activation_func) -> None:
+        super().__init__(n_neurons, activation_func)
+
+    def build_weights(self, n_neurons_last_layer: int, initializer=None, init_layer=False) -> None:
+        if not init_layer:
+            self.n_neurons_last_layer = n_neurons_last_layer
+            self.inner_weights = np.random.normal(0, 0.01, size=(self.n_neurons, self.n_neurons_last_layer))
+        else:
+            self.inner_weights = np.ones((1, self.n_neurons))
+            self.inner_bias = np.zeros(self.n_neurons)
+
+
+
+class CNNLayer(Layer):
+    def __init__(self, kernels: set, activation_func, n_neurons_last_layer: int,
+                 stride=1, padding=None) -> None:
+        super().__init__(kernels, activation_func, n_neurons_last_layer)
+        self.kernels = kernels
+        self.stride = stride
+        self.padding = padding
+
+        self.inner_weights = []
+        self.inner_bias = np.zeros(len(self.kernels))
+        # index for padding
+        self.i_highest = 0
+        self.j_highest = 0
+        for kernel in kernels:
+            self.inner_weights.append(np.random.normal(0, 0.01, size=kernel))
+            if kernel[0] > self.i_highest:
+                self.i_highest = kernel[0]
+            if kernel[1] > self.j_highest:
+                self.j_highest = kernel[1]
+
+    def __call__(self, output_last_layer: np.ndarray) -> np.ndarray:
+        output_k = np.zeros(output_last_layer.shape)
+        x = np.pad(output_last_layer, pad_width=((0, 0), (0, self.i_highest % output_last_layer.shape[1]),
+                                                 (self.j_highest % output_last_layer.shape[2], 0)),
+                   mode='constant', constant_values=0)
+        for kernel in self.kernels:
+            None
+
+        return output_k
+
 
