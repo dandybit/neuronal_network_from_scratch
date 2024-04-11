@@ -63,6 +63,7 @@ class SGD:
         # derivative, in order to complete the chain.
         dA = np.matmul(y, last_weights)
 
+
         # obtain derivative activation function
         d_act_f = layer.get_derivative()(xw_b)
 

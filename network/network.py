@@ -1,6 +1,7 @@
 import sys
 import time
 
+from abc import ABC, abstractmethod
 import numpy as np
 from .dataset import *
 from .activations import *
@@ -52,8 +53,12 @@ class Network:
         last_layer = self.layers[-1]
 
         for layer in self.layers[-2::-1]:
-            last_output = self.optimizer(last_output, layer, last_layer.get_weights_bias()[0])
-            last_layer = layer
+            if layer.gradient:
+                last_output = self.optimizer(last_output, layer, last_layer.get_weights_bias()[0])
+                last_layer = layer
+            else:
+                # last_output = layer.backward_process(last_output)
+                continue
 
     def test(self, inputs: Dataset) -> None:
         results = []
@@ -73,16 +78,17 @@ class Network:
 
 
 class Layer:
-    def __init__(self, n_neurons: int, activation_func) -> None:
+    def __init__(self, n_neurons, activation_func) -> None:
         self.n_neurons = n_neurons
         self.activation_func = activation_func()
         self.derivative_act_func = derivative(self.activation_func)
         self.inner_bias = np.zeros(self.n_neurons)
         self.last_input = []
+        self.gradient = True
 
     def __call__(self, output_last_layer: np.ndarray) -> np.ndarray:
         self.last_input = output_last_layer
-        self.output_x = np.dot(output_last_layer, self.inner_weights.T) + self.inner_bias
+        self.output_x = (np.dot(output_last_layer, self.inner_weights.T) + self.inner_bias).copy()
         return self.activation_func(self.output_x)
 
     def get_shape(self) -> tuple:
@@ -118,35 +124,73 @@ class DenseLayer(Layer):
             self.inner_bias = np.zeros(self.n_neurons)
 
 
-
 class CNNLayer(Layer):
-    def __init__(self, kernels: set, activation_func, n_neurons_last_layer: int,
-                 stride=1, padding=None) -> None:
-        super().__init__(kernels, activation_func, n_neurons_last_layer)
-        self.kernels = kernels
-        self.stride = stride
+    def __init__(self, filters: int, kernel: tuple, activation_func, stride=1, padding=None) -> None:
+        super().__init__(filters, activation_func)
+        self.kernel = kernel
+        self.stride = (stride, stride) if isinstance(stride, int) else stride
         self.padding = padding
+        self.filters = filters
 
-        self.inner_weights = []
-        self.inner_bias = np.zeros(len(self.kernels))
-        # index for padding
-        self.i_highest = 0
-        self.j_highest = 0
-        for kernel in kernels:
-            self.inner_weights.append(np.random.normal(0, 0.01, size=kernel))
-            if kernel[0] > self.i_highest:
-                self.i_highest = kernel[0]
-            if kernel[1] > self.j_highest:
-                self.j_highest = kernel[1]
+        self.inner_weights = np.random.normal(0, 0.01, size=(1, self.kernel[0], self.kernel[1], self.filters))
+        self.inner_bias = np.zeros(self.filters)
 
     def __call__(self, output_last_layer: np.ndarray) -> np.ndarray:
-        output_k = np.zeros(output_last_layer.shape)
-        x = np.pad(output_last_layer, pad_width=((0, 0), (0, self.i_highest % output_last_layer.shape[1]),
-                                                 (self.j_highest % output_last_layer.shape[2], 0)),
-                   mode='constant', constant_values=0)
-        for kernel in self.kernels:
-            None
+        # binary images
+        if len(output_last_layer.shape) == 3:
+            output_last_layer = output_last_layer[:, :, :, np.newaxis]
 
+        output_k = np.zeros((output_last_layer.shape[:-1] + tuple([self.filters])))
+        print(output_last_layer.shape)
+        input_padded = np.pad(output_last_layer,
+                              pad_width=((0, 0),
+                                         (0, self.kernel[0] % output_last_layer.shape[1]),
+                                         (0, self.kernel[1] % output_last_layer.shape[2]),
+                                         (0, 0)),
+                              mode='constant', constant_values=0)
+
+        for x in range(0, output_last_layer.shape[1], self.stride[0]):
+            for y in range(0, output_last_layer.shape[2], self.stride[1]):
+                for z in range(0, input_padded.shape[3]):
+                    conv_op = self.inner_weights * input_padded[:, x:x + self.kernel[0], y:y + self.kernel[1], z:z + 1]
+                    conv_op = np.sum(conv_op, axis=(1, 2))
+                    # re-dim to sum in output_k
+                    conv_op = conv_op[:, np.newaxis, np.newaxis, :]
+                    output_k[:, x:x + 1, y:y + 1, :] += conv_op
+
+        # add bias
+        output_k += self.inner_bias
+
+        self.output_x = output_k.copy()
+
+        # activation function
+        output_k = self.derivative_act_func(output_k)
+
+        # return output_k
         return output_k
 
+    # method use to build weights in DenseLayer, tracking kernel and n_strides
+    def build_weights(self, n, init_layer=False):
+        if not init_layer:
+            self.n_neurons = (int(n[0] / self.stride[0]), int(n[1] / self.stride[1]), self.filters)
+        else:
+            # passing image size via first conv2d
+            self.n_neurons = self.kernel
 
+
+class FlattenLayer(Layer):
+    def __init__(self):
+        self.gradient = False
+
+    def __call__(self, x):
+        self.original_size = x
+        output_x = np.reshape(x, (x.shape[0], -1))
+        self.n_neurons = output_x.shape[1]
+        return output_x
+
+    def build_weights(self, n, init_layer=False):
+        self.n_neurons = n[0] * n[1] * n[2]
+
+    def backward_process(self, x):
+        print(x.shape)
+        return np.reshape(x, self.original_size.shape)
