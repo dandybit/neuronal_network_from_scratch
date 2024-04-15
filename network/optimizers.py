@@ -1,5 +1,6 @@
 import numpy as np
-
+from utils.nn_utils import *
+import network.network as nn
 
 class SGD:
     """
@@ -27,7 +28,7 @@ class SGD:
         # init chain rule.
         dL_dW = layer.get_derivative()(y_true, y_pred)
 
-        # obtain gradient value in the point
+        # obtain gradient value at the point
         gradient = np.dot(dL_dW.T, x) / x.shape[0]  # batch_size
 
         db = np.sum(dL_dW, axis=0) / x.shape[0]  # batch_size
@@ -55,30 +56,49 @@ class SGD:
         returns:
         np.ndarray: derivative for the next step of the chain
         """
+
         weights, bias = layer.get_weights_bias()
         x = layer.get_last_input()
         xw_b = layer.get_output_no_act()
 
         # act_f(lineal_f) we need to multiply last_weights with the accumulate
         # derivative, in order to complete the chain.
-        dA = np.matmul(y, last_weights)
-
+        # check for DENSE -> CNN CASE y.shape == 4
+        if isinstance(layer, nn.CNNLayer) and len(y.shape) == 4:
+            dA = torch_conv_op(y, last_weights, 1)
+        else:
+            dA = np.matmul(y, last_weights)
 
         # obtain derivative activation function
         d_act_f = layer.get_derivative()(xw_b)
 
         # complete chain rule
-        dL_dW = dA * d_act_f
+        if isinstance(layer, nn.CNNLayer):
+            dL_dW = np.reshape(dA, d_act_f.shape) * d_act_f
+            # obtain gradient value at the point
+            print("+" * 100)
+            print(x.shape)
+            print(dL_dW.shape)
+            print(layer.inner_weights.shape)
+            print("+" * 100)
+            gradient, db = op_back_conv2d(x, dL_dW, layer.inner_weights)
+            gradient = gradient / x.shape[0]
+            db = db / x.shape[0]
+        else:
+            dL_dW = dA * d_act_f
+            # obtain gradient value at the point
+            gradient = np.matmul(dL_dW.T, x) / x.shape[0]
+            db = np.sum(dL_dW, axis=0, keepdims=True) / x.shape[0]
 
-        # obtain gradient value in the point
-        gradient = np.matmul(dL_dW.T, x) / x.shape[0]
-
-        db = np.sum(dL_dW, axis=0, keepdims=True) / x.shape[0]
 
         # update weights, negate gradients because we are
         # trying to minimize error.
-        weights = weights - self.learning_rate * gradient
-        bias = bias - self.learning_rate * db
+        if isinstance(layer, nn.CNNLayer):
+            weights = weights - self.learning_rate * gradient
+            bias = bias - self.learning_rate * db
+        else:
+            weights = weights - self.learning_rate * gradient
+            bias = bias - self.learning_rate * db
 
         layer.set_weights_bias([weights, bias])
 

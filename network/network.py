@@ -57,8 +57,8 @@ class Network:
                 last_output = self.optimizer(last_output, layer, last_layer.get_weights_bias()[0])
                 last_layer = layer
             else:
-                # last_output = layer.backward_process(last_output)
-                continue
+                layer.set_weights_bias(last_layer.get_weights_bias())
+                last_layer = layer
 
     def test(self, inputs: Dataset) -> None:
         results = []
@@ -125,38 +125,22 @@ class DenseLayer(Layer):
 
 
 class CNNLayer(Layer):
-    def __init__(self, filters: int, kernel: tuple, activation_func, stride=1, padding=None) -> None:
+    def __init__(self, filters: int, kernel: tuple, activation_func, stride=1, padding=1) -> None:
         super().__init__(filters, activation_func)
         self.kernel = kernel
         self.stride = (stride, stride) if isinstance(stride, int) else stride
-        self.padding = padding
+        self.padding = (padding, padding) if isinstance(padding, int) else padding
         self.filters = filters
 
-        self.inner_weights = np.random.normal(0, 0.01, size=(1, self.kernel[0], self.kernel[1], self.filters))
-        self.inner_bias = np.zeros(self.filters)
 
     def __call__(self, output_last_layer: np.ndarray) -> np.ndarray:
         # binary images
         if len(output_last_layer.shape) == 3:
             output_last_layer = output_last_layer[:, :, :, np.newaxis]
 
-        output_k = np.zeros((output_last_layer.shape[:-1] + tuple([self.filters])))
-        print(output_last_layer.shape)
-        input_padded = np.pad(output_last_layer,
-                              pad_width=((0, 0),
-                                         (0, self.kernel[0] % output_last_layer.shape[1]),
-                                         (0, self.kernel[1] % output_last_layer.shape[2]),
-                                         (0, 0)),
-                              mode='constant', constant_values=0)
+        self.last_input = output_last_layer
 
-        for x in range(0, output_last_layer.shape[1], self.stride[0]):
-            for y in range(0, output_last_layer.shape[2], self.stride[1]):
-                for z in range(0, input_padded.shape[3]):
-                    conv_op = self.inner_weights * input_padded[:, x:x + self.kernel[0], y:y + self.kernel[1], z:z + 1]
-                    conv_op = np.sum(conv_op, axis=(1, 2))
-                    # re-dim to sum in output_k
-                    conv_op = conv_op[:, np.newaxis, np.newaxis, :]
-                    output_k[:, x:x + 1, y:y + 1, :] += conv_op
+        output_k = torch_conv_op(output_last_layer, self.inner_weights, self.stride, self.padding)
 
         # add bias
         output_k += self.inner_bias
@@ -172,8 +156,20 @@ class CNNLayer(Layer):
     # method use to build weights in DenseLayer, tracking kernel and n_strides
     def build_weights(self, n, init_layer=False):
         if not init_layer:
-            self.n_neurons = (int(n[0] / self.stride[0]), int(n[1] / self.stride[1]), self.filters)
+            if len(n) == 2:
+                self.inner_weights = np.random.normal(0, 0.01, size=(1, self.kernel[0], self.kernel[1], self.filters))
+                self.inner_bias = np.zeros(self.filters)
+            else:
+                self.inner_weights = np.random.normal(0, 0.01, size=(n[-1], self.kernel[0], self.kernel[1], self.filters))
+                self.inner_bias = np.zeros(self.filters)
+
+            self.n_neurons = (int(((n[0] + 2 * self.padding[0] - self.kernel[0]) / self.stride[0]) + 1),
+                              int(((n[1] + 2 * self.padding[1] - self.kernel[1]) / self.stride[1]) + 1),
+                              self.filters)
+
         else:
+            self.inner_weights = np.random.normal(0, 0.01, size=(n, self.kernel[0], self.kernel[1], self.filters))
+            self.inner_bias = np.zeros(self.filters)
             # passing image size via first conv2d
             self.n_neurons = self.kernel
 
@@ -192,5 +188,8 @@ class FlattenLayer(Layer):
         self.n_neurons = n[0] * n[1] * n[2]
 
     def backward_process(self, x):
-        print(x.shape)
         return np.reshape(x, self.original_size.shape)
+
+    def get_weights_bias(self) -> tuple:
+        # infer n_filters tuple([-1]) and dim image from input shape
+        return self.inner_weights, self.inner_bias
