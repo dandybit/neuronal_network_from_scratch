@@ -2,10 +2,12 @@ import numpy as np
 from utils.nn_utils import *
 import network.network as nn
 
+
 class SGD:
     """
     Implementation of the Stochastic Gradient Descent.
     """
+
     def __init__(self, learning_rate=0.005):
         self.learning_rate = learning_rate
 
@@ -43,7 +45,6 @@ class SGD:
         # return derivative for the next steps of the chain rule
         return dL_dW
 
-
     def __call__(self, y: np.ndarray, layer, last_weights: np.ndarray) -> np.ndarray:
         """
         Complete the chain rule derivative, obtain gradient values in the point,
@@ -65,7 +66,7 @@ class SGD:
         # derivative, in order to complete the chain.
         # check for DENSE -> CNN CASE y.shape == 4
         if isinstance(layer, nn.CNNLayer) and len(y.shape) == 4:
-            dA = torch_conv_op(y, last_weights, 1)
+            dA = op_conv2d(y, np.reshape(last_weights, (last_weights.shape[-1], last_weights.shape[1], last_weights.shape[2], last_weights.shape[0])))
         else:
             dA = np.matmul(y, last_weights)
 
@@ -76,20 +77,12 @@ class SGD:
         if isinstance(layer, nn.CNNLayer):
             dL_dW = np.reshape(dA, d_act_f.shape) * d_act_f
             # obtain gradient value at the point
-            print("+" * 100)
-            print(x.shape)
-            print(dL_dW.shape)
-            print(layer.inner_weights.shape)
-            print("+" * 100)
             gradient, db = op_back_conv2d(x, dL_dW, layer.inner_weights)
-            gradient = gradient / x.shape[0]
-            db = db / x.shape[0]
         else:
             dL_dW = dA * d_act_f
             # obtain gradient value at the point
             gradient = np.matmul(dL_dW.T, x) / x.shape[0]
             db = np.sum(dL_dW, axis=0, keepdims=True) / x.shape[0]
-
 
         # update weights, negate gradients because we are
         # trying to minimize error.

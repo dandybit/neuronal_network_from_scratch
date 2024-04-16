@@ -16,7 +16,7 @@ class Network:
         self.loss_func = loss_func()
         self.optimizer = optimizer
         self.input_layer = self.layers[0]
-        self.input_layer.build_weights(1, init_layer=True)
+        self.input_layer.build_weights(self.input_layer.n_neurons, init_layer=True)
 
         last_layer = self.input_layer
         for layer in self.layers[1:]:
@@ -132,7 +132,6 @@ class CNNLayer(Layer):
         self.padding = (padding, padding) if isinstance(padding, int) else padding
         self.filters = filters
 
-
     def __call__(self, output_last_layer: np.ndarray) -> np.ndarray:
         # binary images
         if len(output_last_layer.shape) == 3:
@@ -140,7 +139,8 @@ class CNNLayer(Layer):
 
         self.last_input = output_last_layer
 
-        output_k = torch_conv_op(output_last_layer, self.inner_weights, self.stride, self.padding)
+        #output_k = torch_conv_op(output_last_layer, self.inner_weights, self.stride, self.padding)
+        output_k = op_conv2d(output_last_layer, self.inner_weights, self.stride, self.padding)
 
         # add bias
         output_k += self.inner_bias
@@ -156,19 +156,14 @@ class CNNLayer(Layer):
     # method use to build weights in DenseLayer, tracking kernel and n_strides
     def build_weights(self, n, init_layer=False):
         if not init_layer:
-            if len(n) == 2:
-                self.inner_weights = np.random.normal(0, 0.01, size=(1, self.kernel[0], self.kernel[1], self.filters))
-                self.inner_bias = np.zeros(self.filters)
-            else:
-                self.inner_weights = np.random.normal(0, 0.01, size=(n[-1], self.kernel[0], self.kernel[1], self.filters))
-                self.inner_bias = np.zeros(self.filters)
+            self.inner_weights = np.random.normal(0, 0.01, size=(self.filters, self.kernel[0], self.kernel[1], n[-1]))
+            self.inner_bias = np.zeros(self.filters)
 
             self.n_neurons = (int(((n[0] + 2 * self.padding[0] - self.kernel[0]) / self.stride[0]) + 1),
                               int(((n[1] + 2 * self.padding[1] - self.kernel[1]) / self.stride[1]) + 1),
                               self.filters)
-
         else:
-            self.inner_weights = np.random.normal(0, 0.01, size=(n, self.kernel[0], self.kernel[1], self.filters))
+            self.inner_weights = np.random.normal(0, 0.01, size=(self.filters, self.kernel[0], self.kernel[1], n))
             self.inner_bias = np.zeros(self.filters)
             # passing image size via first conv2d
             self.n_neurons = self.kernel
