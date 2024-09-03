@@ -6,46 +6,18 @@ from utils import *
 matplotlib.use('TkAgg')
 
 def main() -> None:
-    # the parse_dataset flats the dataset
     train_X, train_y, test_X, test_y = parse_dataset()
-    """
-    dataset_train = Dataset(train_X, train_y, batch_size=32)
-    dataset_test = Dataset(test_X, test_y, batch_size=32)
-
-    # first layer -> input layer.
-    # n_neurons, activation_function
-    layer_test = [DenseLayer(n_neurons=train_X.shape[1], activation_func=Plain),
-                  DenseLayer(n_neurons=258, activation_func=ReLU),
-                  DenseLayer(n_neurons=128, activation_func=ReLU),
-                  DenseLayer(n_neurons=10, activation_func=Softmax)]
-
-    network = Network(layer_test, optimizer=SGD(learning_rate=0.0002), loss_func=CategoricalCrossEntropy)
-
-    results, error = network.train(dataset_train, epochs=32)
-
-    network.test(dataset_test)
-
-    """
-
-    # 2D for CNN layers
-    train_X = np.reshape(train_X, (train_X.shape[0], 28, 28, 1))
-    test_X = np.reshape(test_X, (test_X.shape[0], 28, 28, 1))
 
     dataset_train = Dataset(train_X, train_y, batch_size=32)
     dataset_test = Dataset(test_X, test_y, batch_size=32)
 
-    layer_test = [CNNLayer(filters=1, kernel=(train_X.shape[1], train_X.shape[2], 1), activation_func=Plain),
-                  CNNLayer(filters=10, kernel=(5, 5), activation_func=ReLU, stride=1),
-                  CNNLayer(filters=5, kernel=(3, 3), activation_func=ReLU, stride=1),
-                  FlattenLayer(),
-                  DenseLayer(n_neurons=10, activation_func=Softmax)]
+    layer_test = [[train_X.shape[1], Flat], [256, ReLU], [256, ReLU], [10, Softmax]]
 
-    network = Network(layer_test, optimizer=SGD(learning_rate=0.001), loss_func=CategoricalCrossEntropy)
+    network = Network(layer_test, optimizer=SGD(learning_rate=0.0001), loss_func=CategoricalCrossEntropy)
 
-    results, error = network.train(dataset_train, epochs=32)
+    results, error = network.train(dataset_train, epochs=16)
 
     network.test(dataset_test)
-
 
 if __name__ == "__main__":
     main()

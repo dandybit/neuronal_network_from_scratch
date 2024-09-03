@@ -13,7 +13,7 @@ class Sigmoid:
         return 1 / (1 + math.exp(-x))
 
 
-class Plain:
+class Flat:
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return x
 
@@ -68,9 +68,9 @@ def _(func: Softmax) -> object:
 
 
 @derivative.register
-def _(func: Plain) -> object:
-    class PlainDerivative:
+def _(func: Flat) -> object:
+    class FlatDerivative:
         def __call__(self, x: np.ndarray) -> int:
             return 1
 
-    return PlainDerivative()
+    return FlatDerivative()
